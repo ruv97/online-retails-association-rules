@@ -1,0 +1,149 @@
+---
+title: "Assignment -1 24440622"
+output:
+  pdf_document: default
+  html_document: default
+date: "2026-07-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Objectives:
+
+- Online retailers has client with heavy buying and different structural patterns.They are having important strategic values.By understanding which items frequently co-purchased client can bundle [...]
+- Items that exhibit strong positive cross-correlations should be dynamically recommended on product pages ("Frequently bought together") to cross-sell effortlessly. Wholesalers purchase predictab[...]
+- Identifying rules allows the retailer to send highly personalized, volume-tiered email promotions tailored to the specific operational niches of those wholesalers
+
+```{r,warning=FALSE,message=FALSE}
+library(tidyverse)
+library(arules)
+library(arulesViz)
+```
+
+## 2. Data set description
+
+- The raw data set contains $541,909$ rows covering international transactions.
+
+```{r,warning=FALSE}
+#Loading raw data set
+raw_data <- read_csv("Online_Retail.csv", col_types = cols(
+  InvoiceNo = col_character(),
+  StockCode = col_character(),
+  Description = col_character(),
+  Quantity = col_integer(),
+  InvoiceDate = col_datetime(format = "%d/%m/%Y %H:%M"),
+  UnitPrice = col_double(),
+  CustomerID = col_character(),
+  Country = col_character()))
+```
+
+```{r}
+head(raw_data)
+```
+
+### Pre processing
+
+- Filter by geographic region - United Kingdom
+- Removed cancelled transactions
+- Removed non product codes
+- Handling missing values
+
+```{r}
+#Preprocessing
+cleaned_data <- raw_data %>% 
+  filter(Country == "United Kingdom") %>% 
+  filter(!is.na(CustomerID) & !is.na(Description)) %>%
+  filter(!str_detect(InvoiceNo, "^[Cc]") & Quantity > 0 & UnitPrice > 0) %>%
+  filter(!StockCode %in% c("POST", "DOT", "M", "BANK CHARGES", "PADS")) %>%
+  mutate(Description = str_trim(Description))
+```
+
+```{r}
+head(cleaned_data)
+```
+
+- Aggregated to basket format
+
+```{r}
+basket_data <- cleaned_data %>% group_by(InvoiceNo) %>% summarise(Items = paste(Description, collapse = ","))
+head(basket_data)
+```
+
+```{r}
+write_lines(basket_data$Items, "market_basket_transactions.csv")
+```
+
+### Rule Mining Process
+
+Exploration Cycles and Parameter Settings
+
+- Cycle 1 (Exploratory): Initial configurations are set broadly with support = 0.005 (items appearing in at least 0.5% of baskets) and confidence = 0.5 (50% chance of co-purchase). This serves to [...]
+
+- Cycle 2 (Refinement): To sift out the noise, thresholds are tuned to support = 0.01 and confidence = 0.6, prioritizing stronger relationships that carry higher operational certainty.
+
+```{r,warning=FALSE}
+transactions <- read.transactions("market_basket_transactions.csv", 
+                                  format = "basket", 
+                                  sep = ",",
+                                  rm.duplicates = TRUE)
+```
+
+```{r}
+print(summary(transactions))
+```
+
+```{r}
+itemFrequencyPlot(transactions, topN = 20, type = "relative", 
+                  main = "Top 20 Most Frequently Purchased Items (UK)")
+```
+
+```{r}
+rules <- apriori(transactions, 
+                 parameter = list(supp = 0.01, conf = 0.6, minlen = 2))
+```
+
+```{r}
+cat(paste("\nTotal association rules discovered:", length(rules), "\n"))
+```
+
+- Redundancy Pruning: Rules that are subsets of broader, more impactful rules with a lower lift are automatically pruned out to ensure that the resulting rules contain distinct, actionable insigh[...]
+
+```{r}
+rules_sorted <- sort(rules, by = "lift", decreasing = TRUE)
+```
+
+```{r}
+subset_matrix <- is.subset(rules_sorted, rules_sorted, proper = TRUE)
+subset_matrix[lower.tri(subset_matrix, diag = TRUE)] <- FALSE
+redundant <- colSums(subset_matrix, na.rm = TRUE) >= 1
+rules_pruned <- rules_sorted[!redundant]
+```
+
+```{r}
+inspect(rules_pruned[1:10])
+```
+
+## Resulting Rules
+
+After pruning, the algorithm surfaces tight, high-lift association rules. The metrics evaluated are:
+
+- Support: The absolute popularity of the rule.
+- Confidence: The predictive reliability of the rule.
+- Lift: The strength of the rule over random coincidence (values $>1$ indicate strong positive dependency).
+
+```{r}
+write(rules_pruned, file = "discovered_association_rules.csv", 
+      sep = ",", row.names = FALSE)
+```
+
+## Recommendations
+
+Based on the high-yield rules uncovered, the client should implement the following
+
+- strategic changes:Strategic Virtual Bundling (Cross-Category Pairs): Create a "Regency High-Tea Set" or "Gardener's Comfort Set" containing the highly correlated items bundled together. Offer a[...]
+
+- Dynamic Recommendations and UI Design: The web development team should hard-code dynamic recommendation blocks. When a customer adds the GREEN REGENCY TEACUP to their virtual cart, an interstit[...]
+
+- Inventory Allocation Syncing: Tie warehouse inventory alerts together for these coupled items. Because these products sell in tandem, experiencing an out-of-stock scenario on the ALARM CLOCK BA[...]
