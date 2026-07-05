@@ -127,6 +127,3 @@ Tie warehouse inventory alerts together for coupled items. Since these products 
 - `Online_Retail.csv`: Raw transaction data (not included in repo)
 
 ---
-
-**Analysis Date**: 2026-07-03  
-**Student ID**: 24440622
